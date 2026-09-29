@@ -10,8 +10,13 @@ const { env } = require('../config/env');
 // safe here because this is a private single-user app gated by password auth.
 const RAILWAY_ORIGIN = /^https:\/\/[a-z0-9-]+\.up\.railway\.app$/;
 
+// Local dev origins are always allowed (single-user private app; auth is the
+// security boundary, not CORS). Covers Vite's default port and 127.0.0.1.
+const LOCAL_DEV_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+
 function isAllowedOrigin(origin) {
   if (origin === env.CLIENT_URL) return true;
+  if (LOCAL_DEV_ORIGIN.test(origin)) return true;
   if ((process.env.ADDITIONAL_ORIGINS || '').split(',').filter(Boolean).includes(origin)) return true;
   if (env.IS_PRODUCTION && RAILWAY_ORIGIN.test(origin)) return true;
   return false;
