@@ -37,6 +37,16 @@ async function main() {
     logger.info(`Executive PA API listening on port ${config.PORT} (${config.NODE_ENV})`);
   });
 
+  // Railway's Docker-deploy proxy defaults to dialing port 8080 when no target
+  // port is set on the domain. Listen there too so the public domain always
+  // reaches the app regardless of which port Railway chose.
+  let extraServer = null;
+  if (config.PORT !== 8080) {
+    extraServer = app.listen(8080, () => {
+      logger.info('Secondary listener on port 8080 (PaaS proxy compatibility).');
+    });
+  }
+
   // Reminder engine: start only in long-running server mode, never in tests,
   // and only when the database was reachable at boot.
   if (config.NODE_ENV !== 'test' && dbConnected) {
@@ -47,6 +57,7 @@ async function main() {
   const shutdown = async (signal) => {
     logger.info(`${signal} received; shutting down gracefully...`);
     scheduler.stop();
+    if (extraServer) extraServer.close();
     server.close(async () => {
       try {
         if (dbConnected) await disconnectDatabase();
