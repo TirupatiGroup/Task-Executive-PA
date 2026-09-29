@@ -9,10 +9,10 @@ const { scheduler } = require('./scheduler');
 const { logger } = require('./utils/logger');
 
 async function main() {
-  // Fail fast on malformed config, but tolerate a missing DATABASE_URL by
-  // starting in degraded mode: the API serves /api/health and non-DB routes
-  // while DB-backed endpoints return errors until DATABASE_URL is provided.
-  // This keeps PaaS deploys green (no crash/retry loop) during setup.
+  // PaaS-resilient startup: NEVER exit(1) for DB issues. Boot always; if the
+  // DB is unreachable at boot, run degraded (health stays green) and let
+  // Prisma's per-query lazy reconnecting pick up the DB once credentials or
+  // network are fixed - no redeploy needed.
   const envResult = validateEnvironment();
   const dbConfigured = Boolean(config.DATABASE_URL);
   if (!envResult.ok && dbConfigured) {
@@ -20,16 +20,16 @@ async function main() {
     process.exit(1);
   }
 
+  let dbConnected = false;
   if (!dbConfigured) {
-    logger.warn('DATABASE_URL is not set - starting in DEGRADED mode (no database). Set DATABASE_URL and redeploy to enable data features.', { issues: envResult.issues });
+    logger.warn('DATABASE_URL is not set - running in DEGRADED mode (no database). Set DATABASE_URL to enable data features.', { issues: envResult.issues });
   } else {
-    const dbOk = await checkDatabaseConnection();
-    if (!dbOk) {
-      logger.error('Startup aborted: could not connect to MongoDB. Check DATABASE_URL.');
-      process.exit(1);
+    dbConnected = await checkDatabaseConnection();
+    if (dbConnected) {
+      await connectDatabase();
+    } else {
+      logger.warn('Database unreachable at boot - running DEGRADED. Prisma will reconnect automatically once the database is reachable; no redeploy required.');
     }
-
-    await connectDatabase();
   }
 
   const app = createApp();
@@ -38,8 +38,8 @@ async function main() {
   });
 
   // Reminder engine: start only in long-running server mode, never in tests,
-  // and only when a database is configured.
-  if (config.NODE_ENV !== 'test' && dbConfigured) {
+  // and only when the database was reachable at boot.
+  if (config.NODE_ENV !== 'test' && dbConnected) {
     scheduler.start();
   }
 
@@ -49,7 +49,7 @@ async function main() {
     scheduler.stop();
     server.close(async () => {
       try {
-        if (dbConfigured) await disconnectDatabase();
+        if (dbConnected) await disconnectDatabase();
         logger.info('Shutdown complete.');
         process.exit(0);
       } catch (err) {
