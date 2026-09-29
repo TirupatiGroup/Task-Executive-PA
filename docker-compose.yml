@@ -1,0 +1,42 @@
+# Local development database only — production uses MongoDB Atlas (see render.yaml)
+# Prisma on MongoDB requires a replica set for transactions (upserts, db push).
+# A single-node replica set with keyfile auth provides that locally.
+# Local port 27018 (changed from 27017 to avoid conflicts with standalone MongoDB).
+# mongod runs on 27018 INSIDE the container too, so the replica set member
+# hostname (localhost:27018) is valid from both the host and the container.
+services:
+  db:
+    image: mongo:7
+    container_name: executive-pa-db
+    command: ["--replSet", "rs0", "--keyFile", "/keys/keyfile", "--port", "27018", "--bind_ip_all"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: executive_pa
+      MONGO_INITDB_ROOT_PASSWORD: executive_pa_dev
+    ports:
+      - "27018:27018"
+    volumes:
+      - executive_pa_mongodata:/data/db
+      - executive_pa_mongokeys:/keys
+    depends_on:
+      keygen:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "-u", "executive_pa", "-p", "executive_pa_dev", "--authenticationDatabase", "admin", "--host", "localhost:27018", "--eval", "try { rs.status().ok } catch (e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'localhost:27018'}]}).ok }"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+
+  # One-shot: generates the keyfile the replica set needs on first run.
+  keygen:
+    image: mongo:7
+    entrypoint: ["sh", "-c", "[ -f /keys/keyfile ] || { openssl rand -base64 756 > /keys/keyfile && chmod 400 /keys/keyfile && chown 999:999 /keys/keyfile; }"]
+    volumes:
+      - executive_pa_mongokeys:/keys
+
+# Pinned to unprefixed names so compose reuses the existing data volumes
+# regardless of the project directory name (avoids creating empty duplicates).
+volumes:
+  executive_pa_mongodata:
+    name: executive_pa_mongodata
+  executive_pa_mongokeys:
+    name: executive_pa_mongokeys

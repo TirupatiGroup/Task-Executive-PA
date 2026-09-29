@@ -1,0 +1,33 @@
+# Netlify free-tier deployment for the Executive PA SPA (React + Vite PWA).
+# Replaceable by design: any static host (Cloudflare Pages, Vercel static,
+# GitHub Pages + actions) works with the same build output client/dist.
+
+[build]
+  base = "client"
+  command = "npm ci && npm run build"
+  publish = "dist"
+
+# SPA fallback: all non-file routes serve index.html.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Service worker must never be redirected or cached by the CDN.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+    Service-Worker-Allowed = "/"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json"
+
+# Environment variables to set in the Netlify UI (never committed):
+#   VITE_MSAL_CLIENT_ID      - Entra app registration (SPA) client id
+#   VITE_MSAL_AUTHORITY      - https://login.microsoftonline.com/<tenant-id>
+#   VITE_MSAL_REDIRECT_URI   - https://<your-site>.netlify.app/auth
+#   VITE_MSAL_SCOPES         - openid profile email User.Read Calendars.Read
+#   VITE_API_BASE_URL        - https://<your-api>.onrender.com

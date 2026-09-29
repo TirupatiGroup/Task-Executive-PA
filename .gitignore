@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.pnp/
+
+# Builds
+client/dist/
+client/dist-assets/
+server/dist/
+build/
+coverage/
+
+# Environment - NEVER commit real .env files
+.env
+.env.*
+!.env.example
+
+# Prisma
+server/prisma/*.db
+
+# Database backups (private data - never commit)
+server/backups/
+backups/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Plan extraction scratch dir
+_plans/
+
+# Local runtime data - never commit
+.mongodb-replset/
+uploads/

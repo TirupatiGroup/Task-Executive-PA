@@ -1,0 +1,23 @@
+{
+  "name": "executive-pa",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Executive PA - Private single-user responsive PWA for executive task, follow-up and calendar command centre",
+  "scripts": {
+    "setup": "npm install && npm --prefix server install && npm --prefix client install",
+    "dev": "concurrently -n server,client -c blue,green \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "build:client": "npm --prefix client run build",
+    "start:server": "npm --prefix server start",
+    "db:backup": "node server/scripts/db-backup.js",
+    "db:restore": "node server/scripts/db-restore.js",
+    "icons": "node server/scripts/generate-icons.js",
+    "lint": "npm --prefix server run lint && npm --prefix client run lint",
+    "test": "npm --prefix server test"
+  },
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

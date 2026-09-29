@@ -1,0 +1,24 @@
+GOTO OK, url=http://localhost:5173/login
+email input present: true
+login API status: 200
+LOGIN OK, at http://localhost:5173/
+ON TASKS PAGE
+[A-personal] selects before: [{"e2e":"sel0","value":"PERSONAL","options":["Personal","Assigned"]},{"e2e":"sel1","value":"NORMAL","options":["Low","Normal","High","Critical"]}]
+
+===== A-personal =====
+Field errors (.text-red-600): []
+BODY SNIPPET: PA | Executive PA | COMMAND CENTRE | Dashboard | My Tasks | Assigned | Calendar | Follow-ups | Deadlines | People | Activity | Assistant | Notifications | Settings | Primary User | skyji1512@gmail.com | Search tasks, people, follow-ups… | Asia/Kolkata | My Tasks | Personal task list | New Task | All | Due Today | Overdue | High/Critical | Active | Completed | All statuses | Not Started | In Progress | Waiting | On Hold | Completed | Cancelled | All priorities | Low | Normal | High | Critical | Newest first | Due date ↑ | Due date ↓ | Priority ↓ | E2E A-personal 1552 | No due date · 0 follow-up
+[A-personal] modal still open after submit: false
+[B-assigned] selects before: [{"e2e":"sel0","value":"PERSONAL","options":["Personal","Assigned"]},{"e2e":"sel1","value":"NORMAL","options":["Low","Normal","High","Critical"]}]
+[B-assigned] Dr. Singh option value: 6ab7426ceded20cdcad01c1c
+
+===== B-assigned =====
+Field errors (.text-red-600): []
+BODY SNIPPET: PA | Executive PA | COMMAND CENTRE | Dashboard | My Tasks | Assigned | Calendar | Follow-ups | Deadlines | People | Activity | Assistant | Notifications | Settings | Primary User | skyji1512@gmail.com | Search tasks, people, follow-ups… | Asia/Kolkata | My Tasks | Personal task list | New Task | All | Due Today | Overdue | High/Critical | Active | Completed | All statuses | Not Started | In Progress | Waiting | On Hold | Completed | Cancelled | All priorities | Low | Normal | High | Critical | Newest first | Due date ↑ | Due date ↓ | Priority ↓ | E2E A-personal 1552 | No due date · 0 follow-up
+[B-assigned] modal still open after submit: false
+
+===== CONSOLE ERRORS =====
+(none)
+
+===== FAILED API CALLS =====
+(none)

@@ -1,0 +1,349 @@
+// Executive PA - Prisma schema (MongoDB connector).
+// Multi-phase schema: User (Phase 1), People/Tasks/FollowUps/ActivityLog (Phase 2),
+// Calendar connection/events (Phase 4), Notifications/Reminder settings (Phase 5).
+// Notes:
+// - Every model maps to a collection via @@map; enums map via @@map on each value.
+// - Relations use manual ObjectId links: a scalar `<field>Id` String plus @relation,
+//   with the related model's id typed as ObjectId. There are no FK constraints in
+//   Mongo; referential cleanup (e.g. cascades) is enforced at the service layer.
+// - Schema changes ship with `prisma db push` (no migration files on Mongo).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// PHASE 1 - User & Auth
+// ============================================================
+
+model User {
+  id            String   @id @default(auto()) @db.ObjectId @map("_id")
+  email         String   @unique
+  passwordHash  String?  @map("password_hash")
+  displayName   String?  @map("display_name")
+  role          UserRole @default(PRIMARY_USER)
+  isActive      Boolean  @default(true)
+  lastLoginAt   DateTime? @map("last_login_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  tasks             Task[]
+  peopleCreated     Person[]
+  followUps         FollowUp[]
+  activityLogs      ActivityLog[]
+  notifications     Notification[]
+  userSetting       UserSetting?
+  calendarEvents    CalendarEvent[]
+  calendarConnection CalendarConnection?
+  taskAttachments   TaskAttachment[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  PRIMARY_USER
+  SYSTEM
+  @@map("user_role")
+}
+
+// ============================================================
+// PHASE 2 - People, Tasks, Follow-ups, Activity
+// ============================================================
+
+model Person {
+  id          String   @id @default(auto()) @db.ObjectId @map("_id")
+  name        String
+  designation String?
+  department  String?
+  email       String?
+  phone       String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tasks   Task[]
+  creator User?  @relation(fields: [createdById], references: [id])
+  createdById String? @map("created_by_id") @db.ObjectId
+
+  @@index([isActive])
+  @@map("people")
+}
+
+enum TaskType {
+  PERSONAL
+  ASSIGNED
+  @@map("task_type")
+}
+
+enum TaskPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+  @@map("task_priority")
+}
+
+enum TaskStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  WAITING
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+  @@map("task_status")
+}
+
+model Task {
+  id           String       @id @default(auto()) @db.ObjectId @map("_id")
+  title        String
+  description  String?
+  taskType     TaskType     @default(PERSONAL) @map("task_type")
+  assigneeId   String?      @map("assignee_id") @db.ObjectId
+  priority     TaskPriority @default(NORMAL)
+  status       TaskStatus   @default(NOT_STARTED)
+  assignedDate DateTime?    @map("assigned_date")
+  startDate    DateTime?    @map("start_date")
+  dueDate      DateTime?    @map("due_date")
+  completedAt  DateTime?    @map("completed_at")
+  createdById  String       @map("created_by_id") @db.ObjectId
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  assignee    Person?         @relation(fields: [assigneeId], references: [id])
+  creator     User            @relation(fields: [createdById], references: [id])
+  followUps   FollowUp[]
+  reminders   Reminder[]
+  attachments TaskAttachment[]
+
+  @@index([status])
+  @@index([priority])
+  @@index([dueDate])
+  @@index([assigneeId])
+  @@index([taskType])
+  @@index([createdById])
+  @@map("tasks")
+}
+
+model TaskAttachment {
+  id          String   @id @default(auto()) @db.ObjectId @map("_id")
+  taskId      String   @map("task_id") @db.ObjectId
+  fileName    String   @map("file_name")
+  storedName  String   @map("stored_name")
+  mimeType    String   @map("mime_type")
+  sizeBytes   Int      @map("size_bytes")
+  kind        AttachmentKind @default(SCREENSHOT)
+  createdById String   @map("created_by_id") @db.ObjectId
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  task    Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  creator User @relation(fields: [createdById], references: [id])
+
+  @@index([taskId])
+  @@index([createdById])
+  @@map("task_attachments")
+}
+
+enum AttachmentKind {
+  SCREENSHOT
+  FILE
+  IMAGE
+  @@map("attachment_kind")
+}
+
+model FollowUp {
+  id             String    @id @default(auto()) @db.ObjectId @map("_id")
+  taskId         String    @map("task_id") @db.ObjectId
+  followUpAt     DateTime  @map("follow_up_at")
+  note           String
+  nextFollowUpAt DateTime? @map("next_follow_up_at")
+  createdById    String    @map("created_by_id") @db.ObjectId
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  task    Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  creator User @relation(fields: [createdById], references: [id])
+
+  @@index([taskId])
+  @@index([nextFollowUpAt])
+  @@map("follow_ups")
+}
+
+enum ActivityEntityType {
+  TASK
+  PERSON
+  FOLLOW_UP
+  CALENDAR
+  NOTIFICATION
+  @@map("activity_entity_type")
+}
+
+enum ActivityAction {
+  CREATE
+  UPDATE
+  DELETE
+  STATUS_CHANGE
+  COMPLETE
+  REOPEN
+  CANCEL
+  FOLLOW_UP_ADD
+  ARCHIVE
+  RESTORE
+  ASSIGN
+  LOGIN
+  SYNC
+  @@map("activity_action")
+}
+
+model ActivityLog {
+  id          String            @id @default(auto()) @db.ObjectId @map("_id")
+  entityType  ActivityEntityType @map("entity_type")
+  entityId    String            @map("entity_id")
+  action      ActivityAction
+  summary     String
+  metadata    Json?
+  createdById String?           @map("created_by_id") @db.ObjectId
+  createdAt   DateTime          @default(now()) @map("created_at")
+
+  creator User? @relation(fields: [createdById], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("activity_logs")
+}
+
+// ============================================================
+// PHASE 4 - Calendar Connection & Event Cache
+// ============================================================
+
+model CalendarConnection {
+  id                   String    @id @default(auto()) @db.ObjectId @map("_id")
+  userId               String    @unique @map("user_id") @db.ObjectId
+  graphCalendarId      String?   @map("graph_calendar_id")
+  ownerEmailAddress    String?   @map("owner_email_address")
+  calendarLabel        String?   @map("calendar_label")
+  isEnabled            Boolean   @default(false) @map("is_enabled")
+  syncStatus           String    @default("NEVER_SYNCED") @map("sync_status")
+  lastSyncAttemptAt    DateTime? @map("last_sync_attempt_at")
+  lastSuccessfulSyncAt DateTime? @map("last_successful_sync_at")
+  lastSyncError        String?   @map("last_sync_error")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  user   User            @relation(fields: [userId], references: [id])
+  events CalendarEvent[]
+
+  @@map("calendar_connections")
+}
+
+model CalendarEvent {
+  id               String   @id @default(auto()) @db.ObjectId @map("_id")
+  userId           String   @map("user_id") @db.ObjectId
+  connectionId     String   @map("connection_id") @db.ObjectId
+  graphEventId     String   @map("graph_event_id")
+  graphCalendarId  String?  @map("graph_calendar_id")
+  subject          String?
+  bodyPreview      String?  @map("body_preview")
+  startAt          DateTime @map("start_at")
+  endAt            DateTime @map("end_at")
+  timeZone         String?  @map("time_zone")
+  isAllDay         Boolean  @default(false) @map("is_all_day")
+  location         String?
+  organizerName    String?  @map("organizer_name")
+  organizerEmail   String?  @map("organizer_email")
+  onlineMeetingUrl String?  @map("online_meeting_url")
+  lastModifiedAt   DateTime? @map("last_modified_at")
+  fetchedAt        DateTime @default(now()) @map("fetched_at")
+
+  user       User               @relation(fields: [userId], references: [id])
+  connection CalendarConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, graphEventId])
+  @@index([userId, startAt])
+  @@map("calendar_events")
+}
+
+// ============================================================
+// PHASE 5 - Notifications & Reminder Settings
+// ============================================================
+
+enum NotificationType {
+  TASK_DEADLINE
+  FOLLOW_UP_DUE
+  MEETING_REMINDER
+  SYSTEM
+  @@map("notification_type")
+}
+
+enum NotificationSeverity {
+  INFO
+  WARNING
+  URGENT
+  @@map("notification_severity")
+}
+
+model Notification {
+  id          String               @id @default(auto()) @db.ObjectId @map("_id")
+  userId      String               @map("user_id") @db.ObjectId
+  type        NotificationType
+  severity    NotificationSeverity @default(INFO)
+  title       String
+  body        String?
+  sourceType  String?              @map("source_type")
+  sourceId    String?              @map("source_id")
+  linkPath    String?              @map("link_path")
+  dedupeKey   String               @map("dedupe_key")
+  isRead      Boolean              @default(false) @map("is_read")
+  readAt      DateTime?            @map("read_at")
+  scheduledFor DateTime?           @map("scheduled_for")
+  createdAt   DateTime             @default(now()) @map("created_at")
+  updatedAt   DateTime             @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, isRead, createdAt])
+  @@map("notifications")
+}
+
+model Reminder {
+  id           String    @id @default(auto()) @db.ObjectId @map("_id")
+  taskId       String    @map("task_id") @db.ObjectId
+  remindAt     DateTime  @map("remind_at")
+  leadMinutes  Int       @default(0) @map("lead_minutes")
+  isEnabled    Boolean   @default(true) @map("is_enabled")
+  snoozedUntil DateTime? @map("snoozed_until")
+  processedAt  DateTime? @map("processed_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([remindAt, isEnabled])
+  @@map("reminders")
+}
+
+model UserSetting {
+  id                   String   @id @default(auto()) @db.ObjectId @map("_id")
+  userId               String   @unique @map("user_id") @db.ObjectId
+  timezone             String   @default("Asia/Kolkata")
+  briefingTime         String   @default("08:00") @map("briefing_time")
+  briefingEnabled      Boolean  @default(true) @map("briefing_enabled")
+  defaultTaskLeadHours Int      @default(24) @map("default_task_lead_hours")
+  defaultFollowUpLeadHours Int  @default(24) @map("default_follow_up_lead_hours")
+  defaultMeetingLeadMinutes Int  @default(15) @map("default_meeting_lead_minutes")
+  browserNotificationsEnabled Boolean @default(false) @map("browser_notifications_enabled")
+  voiceEnabled         Boolean  @default(true) @map("voice_enabled")
+  speechRate           Float    @default(1.0) @map("speech_rate")
+  speechPitch          Float    @default(1.0) @map("speech_pitch")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("user_settings")
+}

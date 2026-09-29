@@ -1,0 +1,65 @@
+// Executive PA - Server entrypoint
+// Boots the Express app, applies startup environment validation and
+// handles graceful shutdown (Phase 7 hardening).
+
+const { createApp } = require('./app');
+const { env: config, validateEnvironment } = require('./config/env');
+const { connectDatabase, disconnectDatabase, checkDatabaseConnection } = require('./config/database');
+const { scheduler } = require('./scheduler');
+const { logger } = require('./utils/logger');
+
+async function main() {
+  // Fail fast when required environment variables are missing/malformed.
+  const envResult = validateEnvironment();
+  if (!envResult.ok) {
+    logger.error('Startup aborted: invalid environment configuration', { issues: envResult.issues });
+    process.exit(1);
+  }
+
+  const dbOk = await checkDatabaseConnection();
+  if (!dbOk) {
+    logger.error('Startup aborted: could not connect to MongoDB. Check DATABASE_URL.');
+    process.exit(1);
+  }
+
+  await connectDatabase();
+
+  const app = createApp();
+  const server = app.listen(config.PORT, () => {
+    logger.info(`Executive PA API listening on port ${config.PORT} (${config.NODE_ENV})`);
+  });
+
+  // Reminder engine: start only in long-running server mode, never in tests.
+  if (config.NODE_ENV !== 'test') {
+    scheduler.start();
+  }
+
+  // ---- Graceful shutdown -------------------------------------------------
+  const shutdown = async (signal) => {
+    logger.info(`${signal} received; shutting down gracefully...`);
+    scheduler.stop();
+    server.close(async () => {
+      try {
+        await disconnectDatabase();
+        logger.info('Shutdown complete.');
+        process.exit(0);
+      } catch (err) {
+        logger.error('Error during shutdown', { error: err.message });
+        process.exit(1);
+      }
+    });
+    // Force-exit safety valve.
+    setTimeout(() => {
+      logger.warn('Forcing shutdown after timeout.');
+      process.exit(1);
+    }, 10000).unref();
+  };
+
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+}
+
+main().catch((err) => {
+  logger.error('Fatal startup error', { error: err.message });
+  process.exit(1);
+});
