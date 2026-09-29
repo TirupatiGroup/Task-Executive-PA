@@ -1,15 +1,16 @@
-# Render.com free-tier deployment definition for the Executive PA API.
-# Providers are replaceable by design (Phase 7 rule): this file is declarative
-# infrastructure config, not business logic. If Render's free tier changes,
-# redeploy the same Node app on any equivalent host (Fly.io, Railway trial,
-# Koyeb, etc.) using the same environment variables.
+# Render.com free-tier deployment for Executive PA - both services from one
+# Blueprint (GitHub -> Render Frontend + Render Backend -> Database).
+# Provider-agnostic by design (Phase 7 rule): if Render's free tier changes,
+# redeploy the same app on any equivalent host using the same env vars.
 #
-# Free-tier note (verify at deploy time): Render free web services sleep after
-# ~15 min idle and wake on the next request; the in-process reminder scheduler
-# only ticks while awake. This is acceptable for personal use - see docs/DEPLOYMENT.md.
-#
-# Expected health check path: /api/ready
+# Free-tier notes (verify at deploy time):
+# - Free web services sleep after ~15 min idle and wake on the next request.
+#   The in-process reminder scheduler only ticks while awake - acceptable for
+#   personal use. A free external cron (cron-job.org) pinging /api/health
+#   every 5-10 min keeps it awake within free limits.
+# - Static sites are always free.
 services:
+  # ---------------- Backend API (Node/Express + Prisma) ----------------
   - type: web
     name: executive-pa-api
     runtime: node
@@ -18,21 +19,49 @@ services:
     rootDir: server
     buildCommand: npm ci && npx prisma generate
     startCommand: node src/index.js
-    healthCheckPath: /api/ready
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        sync: false   # set to your MongoDB Atlas connection string (mongodb+srv://...)
+        sync: false   # Atlas connection string: mongodb+srv://user:pass@cluster.../executive_pa?retryWrites=true&w=majority
       - key: JWT_SECRET
         generateValue: true
-      - key: MICROSOFT_CLIENT_ID
-        sync: false
-      - key: MICROSOFT_TENANT_ID
-        sync: false
       - key: ALLOWED_USER_EMAIL
-        sync: false
+        sync: false   # the single approved account email
       - key: CLIENT_URL
-        sync: false   # e.g. https://executive-pa.netlify.app
+        sync: false   # e.g. https://executive-pa-web.onrender.com
       - key: SERVER_URL
         sync: false   # e.g. https://executive-pa-api.onrender.com
+      - key: MICROSOFT_CLIENT_ID
+        sync: false   # optional (Outlook calendar)
+      - key: MICROSOFT_TENANT_ID
+        sync: false   # optional (Outlook calendar)
+
+  # ---------------- Frontend PWA (React + Vite, static) ----------------
+  - type: web
+    name: executive-pa-web
+    runtime: static
+    plan: free
+    region: singapore
+    rootDir: client
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    # SPA fallback: all non-file routes serve index.html.
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /sw.js
+        name: Cache-Control
+        value: no-cache
+    envVars:
+      - key: VITE_API_BASE_URL
+        sync: false   # e.g. https://executive-pa-api.onrender.com
+      - key: VITE_MSAL_CLIENT_ID
+        sync: false   # optional (Outlook calendar)
+      - key: VITE_MSAL_TENANT_ID
+        sync: false   # optional (Outlook calendar)
+      - key: VITE_MSAL_GRAPH_SCOPES
+        value: Calendars.Read,User.Read,openid,profile,email
